@@ -8,36 +8,33 @@
 #include <DHT.h>
 #include <WiFiUdp.h>
 #include <NTPClient.h>
+#include <DNSServer.h>          // Include the DNSServer library
+#include <WiFiManager.h>        // Include the WiFiManager library
 
 // Define NTP Client to get time (All of this is needed to have a correct timestamp format)
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "pool.ntp.org");
 
 // DHT11 Configuration
-#define DHTPIN  4       // Digital pin connected to the DHT sensor D5
+#define DHTPIN 4       // Digital pin connected to the DHT sensor D14
 #define DHTTYPE DHT11  // DHT 11
-#define RELAY_PIN 1    // Digital pin connected to  D8
+#define RELAY_PIN 1    // Digital pin connected to  D1
 
 DHT dht(DHTPIN, DHTTYPE);
 
-//Firebase Portion
-/* 1. Define the WiFi credentials */
-const char* ssid = "kayebeatriz 2.4";         // Wifi SSID  (change it into your wifi ssid)
-const char* password = "cd#st#74#ritzel123";  // Wifi Password   (change it into your wifi password)
+// Firebase Portion
+/* 1. Define the API Key */
+#define API_KEY "AIzaSyC9NbfEWwnW2l4bbJsVLml44h--MGvTc_8"  
 
 
+/* 2. Define the project ID */
+#define FIREBASE_PROJECT_ID "temperature-9d0fb"
 
-/* 2. Define the API Key */
-#define API_KEY "AIzaSyC9NbfEWwnW2l4bbJsVLml44h--MGvTc_8"  // your firebase API_KEY (found in firebase settings / firebase CDN)
-
-/* 3. Define the project ID */
-#define FIREBASE_PROJECT_ID "temperature-9d0fb"  // your firebase Project_ID (found in firebase settings / firebase CDN)
-
-/* 4. Define the user Email and password that already registered or added in your project */
+/* 3. Define the user Email and password that already registered or added in your project */
 #define USER_EMAIL "alosyndiel4@gmail.com"
 #define USER_PASSWORD "alosyndiel123"
 
-//Define Firebase Data object
+// Define Firebase Data object
 FirebaseData fbdo;
 FirebaseAuth auth;
 FirebaseConfig config;
@@ -60,9 +57,12 @@ void setup() {
   Serial.println("Initializing...");
   delay(1000);
 
+  // WiFiManager setup
+  WiFiManager wifiManager;
+  wifiManager.autoConnect("AutoConnectAP");  // Create a Wi-Fi hotspot for configuration if not connected
+  
   timeClient.begin();
 
-  WiFi.begin(ssid, password);
   Serial.println("Connecting to Wi-Fi");
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
@@ -70,23 +70,15 @@ void setup() {
   }
   Serial.println();
   Serial.print("WiFi connected to ");
-  Serial.println(ssid);
-  Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
   Serial.printf("Firebase Client v%s\n\n", FIREBASE_CLIENT_VERSION);
   delay(3000);
 
-  Serial.println("Calibrating Relay...");
-  delay(3000);
-  Serial.println("...");
-  pinMode(RELAY_PIN, OUTPUT);  // Set the relay pin as an output
-
-
   Serial.println("Calibrating DHT11 Sensor...");
   delay(3000);
   Serial.println("...");
- 
+
   // Read DHT11 Sensor
   float temperature = dht.readTemperature();
 
@@ -97,17 +89,17 @@ void setup() {
 
   delay(3000);  // delay start for 3 seconds
 
- 
+  pinMode(RELAY_PIN, OUTPUT);  // Set the relay pin as an output
 
   /* Assign the api key (required) */
   config.api_key = API_KEY;
 
-  /* Assign the user sign in credentials */
+  /* Assign the user sign-in credentials */
   auth.user.email = USER_EMAIL;
   auth.user.password = USER_PASSWORD;
 
-  /* Assign the callback function for the long running token generation task */
-  config.token_status_callback = tokenStatusCallback;  //see addons/TokenHelper.h
+  /* Assign the callback function for the long-running token generation task */
+  config.token_status_callback = tokenStatusCallback;  // see addons/TokenHelper.h
 
   Firebase.begin(&config, &auth);
 
@@ -131,8 +123,6 @@ void setup() {
   Serial.println(uid);
 }
 
-
-
 void loop() {
 
   delay(2000);  // Wait for 2 seconds between readings
@@ -144,21 +134,16 @@ void loop() {
 
 
   // Read temperature in Celsius
-float temperature = dht.readTemperature();
+  float temperature = dht.readTemperature();
 
-if (isnan(temperature)) {
-  Serial.println("Error: Failed to read temperature from DHT sensor!");
-  // Handle the error condition here, such as setting a default temperature value or taking appropriate action
-} else {
-  if (temperature >= 28.0) {
-    digitalWrite(RELAY_PIN, HIGH); // Turn on the relay if temperature is higher than 28 degrees Celsius
-    Serial.println("Relay ON");
-  } else {
-    digitalWrite(RELAY_PIN, LOW); // Turn off the relay if temperature is lower than 28 degrees Celsius
-    Serial.println("Relay OFF");
-  }
-}
-
+  if (!isnan(temperature)) {
+    if (temperature >= 28.0) {
+      digitalWrite(RELAY_PIN, HIGH); // Turn on the relay if temperature is higher than 35 degrees Celsius
+      Serial.println("Relay ON");
+    } else {
+      digitalWrite(RELAY_PIN, LOW); // Turn off the relay if temperature is lower than 35 degrees Celsius
+      Serial.println("Relay OFF");
+    }
   //---------------------
   // Set the documents
   //---------------------
@@ -199,10 +184,13 @@ if (isnan(temperature)) {
   Serial.print("Sending document.... ");
 
   // Creates the Document and Send to Firestore
-  if (Firebase.Firestore.createDocument(&fbdo, FIREBASE_PROJECT_ID, "" /* databaseId can be (default) or empty */, path.c_str(), content.raw()))
-    Serial.printf("Success\n%s\n\n", fbdo.payload().c_str());
-  else {
-    Serial.print(fbdo.errorReason());
+    if (Firebase.Firestore.createDocument(&fbdo, FIREBASE_PROJECT_ID, "" /* databaseId can be (default) or empty */, path.c_str(), content.raw())) {
+      Serial.printf("Success\n%s\n\n", fbdo.payload().c_str());
+    } else {
+      Serial.print(fbdo.errorReason());
+    }
+  } else {
+    Serial.println("Invalid temperature value (NaN)");
   }
 
   delay(10000);  // 10 secs delay
